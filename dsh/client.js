@@ -6,8 +6,9 @@
 // per-window usage bars, consumed percent (已用) and reset countdowns.
 //
 // Data: same-origin GET /magpie/quotas (served by the host half, which reads
-// the local Magpie gateway at 127.0.0.1:3425 — its API has no CORS headers, so
-// the browser cannot call it directly).
+// the local Magpie gateway — its API has no CORS headers, so the browser cannot
+// call it directly). The gateway's port is auto-discovered by the host half
+// (from Magpie's settings.json), so moving the port needs no plugin change.
 //
 // Why the panel is plain DOM appended to document.body instead of a React
 // sibling: the composer area lives inside a scaled/transformed wrapper, so a
@@ -672,7 +673,7 @@ window.__ModuleLoader__.load({
       const at = data && data.fetchedAt ? fmtClock(data.fetchedAt) : null;
       html +=
         '<div class="mq-foot">' +
-        "<span>" + esc(data && data.base ? data.base.replace(/^https?:\/\//, "") : "127.0.0.1:3425") + "</span>" +
+        "<span>" + esc(data && data.base ? data.base.replace(/^https?:\/\//, "") : "Magpie") + "</span>" +
         (at ? "<span>· 更新 " + esc(at) + "</span>" : "") +
         '<span class="mq-sp">每 60s 自动刷新</span>' +
         "</div>";

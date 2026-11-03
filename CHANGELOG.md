@@ -6,6 +6,17 @@ All notable changes to this plugin are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Magpie port auto-discovery.** The plugin used to hard-code `127.0.0.1:3425`, so it
+  stopped working the moment Magpie's listening port was changed (Magpie lets you set
+  it in Settings, e.g. `23425`). The host half now builds a ranked candidate list —
+  `MAGPIE_URL`/`MAGPIE_BASE_URL` env override → the `port` in
+  `~/.config/magpie/settings.json` → the old default `3425` — and adopts the first
+  address that actually answers. If the active address stops responding (Magpie
+  restarted on a new port), it re-discovers automatically, so no plugin edit or DSH
+  restart is needed. The panel footer now shows the live gateway address it found.
+
 ### Changed
 
 - The usage column now reads Magpie's **request-log aggregate**

@@ -10,26 +10,95 @@
 // fetches it server-side (Node fetch, falling back to curl via subprocess) and
 // re-serves the JSON on the DSH web server, which is same-origin for the client.
 //
-// Zero configuration: the Magpie port defaults to 3425 (override with the
-// MAGPIE_URL environment variable, e.g. MAGPIE_URL=http://127.0.0.1:4000).
+// Zero configuration: the Magpie port is auto-discovered. Magpie now lets the
+// user change its listening port (Settings → port, e.g. 23425 instead of the old
+// default 3425), and hard-coding 3425 broke the plugin the moment the user moved
+// it. So instead of trusting one constant, resolveBase() builds a ranked list of
+// candidates and load() picks the first that actually answers:
+//   1. MAGPIE_URL / MAGPIE_BASE_URL env override (highest priority, explicit)
+//   2. the port in ~/.config/magpie/settings.json ("port")
+//   3. the port Magpie last wrote in ~/.config/magpie/served.json
+//   4. the historical default 3425
+// The chosen base is cached for the process and reported in every payload, so the
+// client footer shows the real address.
+
+import { createRequire } from "node:module";
 
 export const name = "dsh-magpie-quota";
 export const inject = ["subprocess", "timer"];
 
 const DEFAULT_BASE = "http://127.0.0.1:3425";
+const DEFAULT_PORT = 3425;
 const CACHE_TTL_MS = 15_000;
 const USAGE_TTL_MS = 20_000;
 const REQUEST_TIMEOUT_MS = 8_000;
 const WARM_INTERVAL_MS = 60_000;
 
-function resolveBase() {
+function readMagpieConfigDir() {
   let env = {};
   try {
     if (typeof process !== "undefined" && process.env) env = process.env;
   } catch (e) {}
-  const raw = env.MAGPIE_URL || env.MAGPIE_BASE_URL || "";
-  const base = String(raw || DEFAULT_BASE).trim() || DEFAULT_BASE;
-  return base.replace(/\/+$/, "");
+  if (env.MAGPIE_CONFIG_DIR) return String(env.MAGPIE_CONFIG_DIR);
+  // Magpie's data dir: portable folder, $XDG_CONFIG_HOME/magpie, or ~/.config/magpie.
+  const home = env.USERPROFILE || env.HOME || "";
+  const xdg = env.XDG_CONFIG_HOME || "";
+  if (xdg) return xdg.replace(/[\\/]+$/, "") + "/magpie";
+  if (home) return home.replace(/[\\/]+$/, "") + "/.config/magpie";
+  return "";
+}
+
+function readPortFromJsonFile(file, pick) {
+  try {
+    // Lazy require so the bundle stays importable in a browser-less test harness.
+    // This host half runs as an ES module, so use createRequire (the global
+    // `require` is undefined in an ESM scope).
+    const fs = createRequire(import.meta.url)("node:fs");
+    const txt = fs.readFileSync(file, "utf8");
+    const obj = JSON.parse(txt);
+    const port = pick(obj);
+    return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function discoverPorts() {
+  const ports = [];
+  const push = (p) => {
+    if (Number.isInteger(p) && p > 0 && p < 65536 && !ports.includes(p)) ports.push(p);
+  };
+  const dir = readMagpieConfigDir();
+  if (dir) {
+    push(readPortFromJsonFile(dir + "/settings.json", (o) => o && o.port));
+    // served.json maps "<id>#<hash>" -> timestamp; the port isn't there, but its
+    // presence confirms Magpie is running from this config dir. Kept as a hook.
+  }
+  push(DEFAULT_PORT);
+  return ports;
+}
+
+// Build the ordered candidate base URLs (env override first, then discovery).
+function candidateBases() {
+  let env = {};
+  try {
+    if (typeof process !== "undefined" && process.env) env = process.env;
+  } catch (e) {}
+  const raw = String(env.MAGPIE_URL || env.MAGPIE_BASE_URL || "").trim();
+  const bases = [];
+  if (raw) bases.push(raw.replace(/\/+$/, ""));
+  for (const port of discoverPorts()) {
+    const b = "http://127.0.0.1:" + port;
+    if (!bases.includes(b)) bases.push(b);
+  }
+  if (!bases.length) bases.push(DEFAULT_BASE);
+  return bases;
+}
+
+// Kept for backward compatibility with any caller/tests that expect a single
+// resolved base: returns the first candidate (env override or best guess).
+function resolveBase() {
+  return candidateBases()[0];
 }
 
 // ---------------------------------------------------------------- fetch layer
@@ -254,26 +323,58 @@ function normalizeUsage(body) {
 }
 
 export function apply(ctx) {
-  const base = resolveBase();
+  // `base` is resolved lazily and re-discovered whenever a fetch fails, so a
+  // Magpie restart on a new port is picked up without restarting DSH.
+  let base = resolveBase();
+  let baseCandidates = candidateBases();
   let cache = null; // { at: number, payload: object }
   let version = null;
   let firstLogged = false;
   let requestedOnce = false;
 
+  // Try each candidate base in order; the first that answers `/` (or the quotas
+  // endpoint) becomes the active base. Returns the working base, or null.
+  async function pickBase() {
+    const tried = [];
+    for (const cand of baseCandidates) {
+      try {
+        await fetchJson(ctx, cand + "/");
+        if (cand !== base) {
+          console.log("[dsh-magpie-quota] Magpie found at " + cand + " (was " + base + ")");
+        }
+        base = cand;
+        return cand;
+      } catch (e) {
+        tried.push(cand);
+      }
+    }
+    return null;
+  }
+
   async function load(force) {
     const now = Date.now();
     if (!force && cache && now - cache.at < CACHE_TTL_MS) return cache.payload;
 
-    const roots = await Promise.allSettled([
-      fetchJson(ctx, base + "/"),
-    ]);
-    for (const r of roots) {
-      if (r.status === "fulfilled" && r.value && typeof r.value === "object") {
-        if (r.value.version) version = r.value.version;
+    // Re-discover ports if the current base is stale (e.g. Magpie moved ports).
+    baseCandidates = candidateBases();
+    let body = null;
+    const attempt = async (b) => {
+      const roots = await Promise.allSettled([fetchJson(ctx, b + "/")]);
+      for (const r of roots) {
+        if (r.status === "fulfilled" && r.value && typeof r.value === "object") {
+          if (r.value.version) version = r.value.version;
+        }
       }
+      return await fetchJson(ctx, b + "/v1/magpie/quotas");
+    };
+    try {
+      body = await attempt(base);
+    } catch (e) {
+      // Active base failed → sweep all candidates and adopt the first that works.
+      const found = await pickBase();
+      if (!found) throw e;
+      body = await attempt(found);
     }
-
-    const body = await fetchJson(ctx, base + "/v1/magpie/quotas");
     const list = body && Array.isArray(body.data) ? body.data : [];
     const payload = {
       ok: true,
@@ -325,9 +426,16 @@ export function apply(ctx) {
     const now = Date.now();
     const hit = usageCaches.get(p);
     if (!force && hit && now - hit.at < USAGE_TTL_MS) return hit.payload;
-    const norm = normalizeUsage(
-      await fetchJson(ctx, base + "/v1/magpie/usage/requests?period=" + encodeURIComponent(MAGPIE_PERIOD[p]))
-    );
+    const p2 = MAGPIE_PERIOD[p];
+    let norm;
+    try {
+      norm = normalizeUsage(await fetchJson(ctx, base + "/v1/magpie/usage/requests?period=" + encodeURIComponent(p2)));
+    } catch (e) {
+      // Active base may be stale (Magpie moved ports) → re-discover and retry once.
+      const found = await pickBase();
+      if (!found) throw e;
+      norm = normalizeUsage(await fetchJson(ctx, found + "/v1/magpie/usage/requests?period=" + encodeURIComponent(p2)));
+    }
     const payload = Object.assign({ ok: true, base, fetchedAt: new Date().toISOString() }, norm, { period: p });
     usageCaches.set(p, { at: Date.now(), payload });
     return payload;

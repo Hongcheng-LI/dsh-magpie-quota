@@ -239,3 +239,59 @@ test("cross-site and non-GET requests are refused before any fetch happens", asy
 
   assert.equal(fetchLog.length, 0, "no network traffic for refused requests");
 });
+
+// ---- port auto-discovery -----------------------------------------------------
+// Magpie now lets the user pick its port. The plugin must not be stuck on 3425:
+// it reads the port from settings.json and adopts the first candidate that
+// answers. This imports a FRESH copy of the module (env + module cache matter),
+// so it lives in its own file-style block using a unique import query.
+test("auto-discovers the configured Magpie port from settings.json", async () => {
+  const fs = await import("node:fs");
+  const os = await import("node:os");
+  const path = await import("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "magpie-cfg-"));
+  fs.writeFileSync(path.join(dir, "settings.json"), JSON.stringify({ port: 23425 }));
+
+  const prevUrl = process.env.MAGPIE_URL;
+  const prevBase = process.env.MAGPIE_BASE_URL;
+  const prevDir = process.env.MAGPIE_CONFIG_DIR;
+  delete process.env.MAGPIE_URL;
+  delete process.env.MAGPIE_BASE_URL;
+  process.env.MAGPIE_CONFIG_DIR = dir;
+  try {
+    const mod = await import("../dsh/index.js?discovery=" + Date.now());
+    const routes = new Map();
+    mod.apply({
+      inject: (deps, fn) => fn({ webServer: { register: (def) => routes.set(def.path, def) } }),
+      timer: { interval: () => () => {}, timeout: () => () => {} },
+      effect: (fn) => { const d = fn(); if (typeof d === "function") d(); return () => {}; },
+    });
+
+    fetchLog = [];
+    const hits = new Set();
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      fetchLog.push(u);
+      if (u.startsWith("http://127.0.0.1:23425/")) {
+        hits.add("23425");
+        if (u.endsWith("/v1/magpie/quotas")) return { ok: true, status: 200, text: async () => JSON.stringify({ data: [{ provider: "deepseek", name: "DeepSeek", kind: "balance", windows: [], balance: "¥1" }] }) };
+        return { ok: true, status: 200, text: async () => JSON.stringify({ version: "9.9.9" }) };
+      }
+      // 3425 must NOT be reachable in this scenario.
+      throw new Error("connect ECONNREFUSED 127.0.0.1:3425");
+    };
+
+    const res = await call(routes.get("/magpie/quotas"), { url: "/magpie/quotas?force=1" });
+    assert.equal(res.body.ok, true, "discovered base answers");
+    assert.equal(res.body.base, "http://127.0.0.1:23425", "adopted the settings.json port");
+    assert.equal(res.body.version, "9.9.9");
+    assert.ok(hits.has("23425"), "traffic went to the discovered port");
+  } finally {
+    globalThis.fetch = ORIGINAL_FETCH;
+    if (prevUrl === undefined) delete process.env.MAGPIE_URL; else process.env.MAGPIE_URL = prevUrl;
+    if (prevBase === undefined) delete process.env.MAGPIE_BASE_URL; else process.env.MAGPIE_BASE_URL = prevBase;
+    if (prevDir === undefined) delete process.env.MAGPIE_CONFIG_DIR; else process.env.MAGPIE_CONFIG_DIR = prevDir;
+    stubFetch();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
