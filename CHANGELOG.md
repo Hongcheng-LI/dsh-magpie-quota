@@ -4,7 +4,7 @@ All notable changes to this plugin are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.2] — 2026-11-04
 
 ### Changed
 
@@ -12,6 +12,10 @@ All notable changes to this plugin are recorded here. The format follows
   package name (they used to differ: repo `dsh-magpie`, npm `dsh-magpie-quota`). Old
   URLs redirect automatically on GitHub. Install command is now
   `dsh plugin --profile web add github:Hongcheng-LI/dsh-magpie-quota`.
+- Metadata-only release: refreshes the `repository` / `homepage` / `bugs` URLs published
+  to npm so they point at the renamed repo. No code changes.
+
+## [Unreleased]
 
 ### Added
 
