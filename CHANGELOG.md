@@ -6,6 +6,13 @@ All notable changes to this plugin are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Repository renamed to `dsh-magpie-quota`** so the GitHub repo name matches the npm
+  package name (they used to differ: repo `dsh-magpie`, npm `dsh-magpie-quota`). Old
+  URLs redirect automatically on GitHub. Install command is now
+  `dsh plugin --profile web add github:Hongcheng-LI/dsh-magpie-quota`.
+
 ### Added
 
 - **Magpie port auto-discovery.** The plugin used to hard-code `127.0.0.1:3425`, so it

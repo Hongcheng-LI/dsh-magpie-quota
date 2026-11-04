@@ -6,11 +6,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Hongcheng-LI/dsh-magpie.git"
+    "url": "git+https://github.com/Hongcheng-LI/dsh-magpie-quota.git"
   },
-  "homepage": "https://github.com/Hongcheng-LI/dsh-magpie#readme",
+  "homepage": "https://github.com/Hongcheng-LI/dsh-magpie-quota#readme",
   "bugs": {
-    "url": "https://github.com/Hongcheng-LI/dsh-magpie/issues"
+    "url": "https://github.com/Hongcheng-LI/dsh-magpie-quota/issues"
   },
   "files": [
     "dsh",

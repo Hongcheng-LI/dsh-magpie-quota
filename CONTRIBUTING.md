@@ -5,8 +5,8 @@ Thanks for taking a look. This is a small plugin and the rules are small too.
 ## Run it locally
 
 ```bash
-git clone https://github.com/Hongcheng-LI/dsh-magpie
-cd dsh-magpie
+git clone https://github.com/Hongcheng-LI/dsh-magpie-quota
+cd dsh-magpie-quota
 dsh plugin --profile desktop add "$PWD"     # symlinks the working copy into your profile
 ```
 

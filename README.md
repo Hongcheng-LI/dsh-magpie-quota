@@ -1,6 +1,6 @@
-# dsh-magpie
+# dsh-magpie-quota
 
-[![CI](https://github.com/Hongcheng-LI/dsh-magpie/actions/workflows/ci.yml/badge.svg)](https://github.com/Hongcheng-LI/dsh-magpie/actions/workflows/ci.yml)
+[![CI](https://github.com/Hongcheng-LI/dsh-magpie-quota/actions/workflows/ci.yml/badge.svg)](https://github.com/Hongcheng-LI/dsh-magpie-quota/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![DSH plugin](https://img.shields.io/badge/DSH-plugin-6f42c1)](https://dshmarketplace.dev)
 [![npm](https://img.shields.io/badge/npm-dsh--magpie--quota-cb3837)](https://www.npmjs.com/package/dsh-magpie-quota)
@@ -21,10 +21,10 @@ GLM / OpenCode Zen / Codex 等订阅账号统一成 OpenAI 兼容接口。它自
 dsh plugin --profile desktop add dsh-magpie-quota
 
 # 或者直接从 GitHub 装
-dsh plugin --profile desktop add github:Hongcheng-LI/dsh-magpie
+dsh plugin --profile desktop add github:Hongcheng-LI/dsh-magpie-quota
 ```
 
-> npm 包名是 `dsh-magpie-quota`（`dsh-magpie` 已被他人占用），GitHub 仓库仍叫 `dsh-magpie`，两者是同一个插件。
+> npm 包名与 GitHub 仓库名一致，都是 `dsh-magpie-quota`（`dsh-magpie` 裸名已被他人占用）。
 
 > 要求：本机运行 [Magpie](https://magpie.bot)（默认端口 3425，可用环境变量 `MAGPIE_URL` 覆盖）。
 > 只改 `dsh/client.js` 时刷新页面即生效；改 `dsh/index.js` 后需重启 DSH。
